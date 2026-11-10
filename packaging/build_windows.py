@@ -98,19 +98,59 @@ def fetch_gguf(models: Path) -> str:
     raise SystemExit("Could not download any translation model")
 
 
+CPU_RX = r"bin-win-cpu-x64\.zip$"
+
+
+def gh_json(*args):
+    out = subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+    return json.loads(out)
+
+
+def find_llama_release(dl: Path) -> dict:
+    """The newest llama.cpp release that has Windows binaries (the 'latest' one may not)."""
+    repo = ["--repo", "ggml-org/llama.cpp"]
+    candidates = []
+    latest = gh_json("release", "view", *repo, "--json", "tagName,assets")
+    if any(re.search(CPU_RX, a["name"]) for a in latest["assets"]):
+        return latest
+    print(f"  latest release {latest['tagName']} has no Windows build: {[a['name'] for a in latest['assets']]}")
+    if any(a["name"] == "nightly-tag.txt" for a in latest["assets"]):
+        subprocess.run(["gh", "release", "download", latest["tagName"], *repo, "--pattern", "nightly-tag.txt",
+                        "--dir", str(dl), "--clobber"], check=False)
+        hint = (dl / "nightly-tag.txt")
+        if hint.exists():
+            tag = hint.read_text(encoding="utf-8", errors="replace").strip().split()[0] if hint.read_text().strip() else ""
+            print(f"  nightly-tag.txt says: {tag!r}")
+            if tag:
+                candidates.append(tag)
+    releases = gh_json("release", "list", *repo, "--limit", "40", "--json", "tagName,publishedAt")
+    print("  recent releases:", [r["tagName"] for r in releases[:15]])
+    candidates += [r["tagName"] for r in releases]
+    seen, looked = set(), []
+    for tag in candidates:
+        if tag in seen:
+            continue
+        seen.add(tag)
+        try:
+            info = gh_json("release", "view", tag, *repo, "--json", "tagName,assets")
+        except subprocess.CalledProcessError:
+            continue
+        if any(re.search(CPU_RX, a["name"]) for a in info["assets"]):
+            return info
+        looked.append((tag, [a["name"] for a in info["assets"]][:12]))
+    for tag, names in looked[:4]:
+        print(f"  {tag}: {names}")
+    raise SystemExit("No llama.cpp release with Windows binaries found")
+
+
 def fetch_llama(dest: Path) -> str:
-    """Latest llama.cpp release: CPU and Vulkan builds of llama-server for Windows x64."""
+    """llama.cpp: CPU and Vulkan builds of llama-server for Windows x64."""
     dl = OUT / "dl"
     dl.mkdir(parents=True, exist_ok=True)
-    info = json.loads(
-        subprocess.run(
-            ["gh", "release", "view", "--repo", "ggml-org/llama.cpp", "--json", "tagName,assets"],
-            check=True, capture_output=True, text=True,
-        ).stdout
-    )
+    info = find_llama_release(dl)
     tag = info["tagName"]
     log(f"llama.cpp {tag}")
-    wanted = {"cpu": r"bin-win-cpu-x64\.zip$", "vulkan": r"bin-win-vulkan-x64\.zip$"}
+    wanted = {"cpu": CPU_RX, "vulkan": r"bin-win-vulkan-x64\.zip$"}
     for kind, rx in wanted.items():
         asset = next((a["name"] for a in info["assets"] if re.search(rx, a["name"])), None)
         if not asset:
