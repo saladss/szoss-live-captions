@@ -1,0 +1,134 @@
+# SZOSS live captions: settings
+# Edit this file, then restart the program. Most things can also be set on the
+# command line (python captions.py --help).
+
+[audio]
+# Which microphone / audio interface to listen to. "" = the system default input.
+# Use part of the name ("Scarlett", "USB Audio") or the number shown by:
+#   python captions.py devices
+device = ""
+# On a multi-channel interface, which input channel carries the speaker (0 = first).
+channel = 0
+# Extra gain before recognition. Watch the level meter on the control page:
+# speech should peak around -20 to -6 dBFS. Raise this if it sits below -35.
+gain = 1.0
+
+[segmenter]
+# Voice-activity threshold (0-1). Raise to 0.6-0.7 in a noisy room.
+vad_threshold = 0.5
+# A pause this long ends a caption.
+end_silence_ms = 600
+# Ignore blips shorter than this (coughs, clicks).
+min_speech_ms = 300
+# If the speaker doesn't pause, force a caption break after this many seconds.
+max_caption_s = 12
+# Audio kept from just before speech starts, so first syllables aren't clipped.
+preroll_ms = 300
+# How often to refresh the grey "live" line while someone is talking (seconds).
+# 0 turns it off. It is switched off automatically if the computer is too slow.
+partial_interval_s = 1.0
+
+[asr]
+# auto = MLX on Apple Silicon Macs if installed, otherwise faster-whisper.
+engine = "auto"            # auto | mlx | faster-whisper
+# faster-whisper: tiny | base | small | medium | large-v3 | large-v3-turbo, or a folder.
+# mlx: a Hugging Face repo such as mlx-community/whisper-large-v3-turbo, or a folder.
+# "auto" picks large-v3-turbo on Apple Silicon or an NVIDIA GPU, and small on CPU only.
+model = "auto"
+device = "auto"            # faster-whisper only: auto | cpu | cuda
+compute_type = "default"   # faster-whisper only: default | int8 | float16 | int8_float16
+beam_size = 5              # faster-whisper only; 1 is faster, 5 is more accurate
+# Starting language mode. Switch live on the display or control page:
+#   A = auto-detect, E = English speaker, C = Chinese speaker
+language = "auto"          # auto | en | zh
+# Hints that help Whisper spell names and terms. Keep them short.
+prompt_en = "Welcome to the Shenzhen Open Source Silicon Meetup. Tiny Tapeout, wafer.space, OuterFab, KiCad, SkyWater SKY130, GF180MCU, Efabless, OpenROAD, PDK, tapeout, chip-on-board, wire bonding, RISC-V, ECOS."
+prompt_zh = "欢迎来到深圳开源芯片交流会。今天我们聊开源芯片、流片、PDK、晶圆、封装和 RISC-V。"
+
+[translation]
+# Backends to try, in order. If the first fails or times out, the next is used.
+# Names refer to the [translation.backends.*] sections below. Use [] for
+# transcription only (no translation).
+order = ["ollama"]
+# Recent sentences sent along as context, so pronouns and topics carry over.
+context_lines = 3
+timeout_s = 8
+topic = "a technical meetup about open-source chip design: tapeouts, PDKs, wafers, chip packaging and the open-source hardware community in Shenzhen"
+
+# Local model, runs on this computer, no internet needed.
+# Install Ollama (https://ollama.com), then: ollama pull qwen3:8b
+# On a machine with 8 GB RAM use qwen3:4b instead.
+[translation.backends.ollama]
+type = "ollama"
+url = "http://127.0.0.1:11434"
+model = "qwen3:8b"
+
+# DeepSeek (works in mainland China without a VPN). Needs internet.
+# Put your key in the DEEPSEEK_API_KEY environment variable.
+[translation.backends.deepseek]
+type = "openai"
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-flash"
+api_key_env = "DEEPSEEK_API_KEY"
+
+# Alibaba Model Studio / Qwen (works in mainland China). Needs internet.
+# qwen-mt-* models are dedicated translation models; qwen-flash / qwen-plus also work.
+# Use the base URL for your account's region (Beijing account shown here).
+[translation.backends.qwen]
+type = "openai"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+model = "qwen-mt-flash"
+api_key_env = "DASHSCOPE_API_KEY"
+
+# Fixed term translations, English = Chinese. Used in both directions.
+# Map a name to itself to keep it in English.
+[glossary]
+"open source silicon" = "开源芯片"
+"open-source chip" = "开源芯片"
+"open-source hardware" = "开源硬件"
+"tapeout" = "流片"
+"shuttle" = "MPW 班车"
+"multi-project wafer" = "多项目晶圆"
+"PDK" = "PDK"
+"process design kit" = "工艺设计套件"
+"wafer" = "晶圆"
+"die" = "裸片"
+"chip-on-board" = "板上芯片（COB）"
+"wire bonding" = "引线键合"
+"foundry" = "晶圆代工厂"
+"packaging" = "封装"
+"standard cell" = "标准单元"
+"meetup" = "交流会"
+"Shenzhen" = "深圳"
+"Chaihuo" = "柴火"
+"Chinese Academy of Sciences" = "中国科学院"
+"Tiny Tapeout" = "Tiny Tapeout"
+"wafer.space" = "wafer.space"
+"OuterFab" = "OuterFab"
+"KiCad" = "KiCad"
+"KiCon" = "KiCon"
+"SkyWater" = "SkyWater"
+"GlobalFoundries" = "GlobalFoundries"
+"Efabless" = "Efabless"
+"OpenROAD" = "OpenROAD"
+"RISC-V" = "RISC-V"
+"ECOS" = "ECOS"
+
+[display]
+title = "SZOSS 实时字幕 · Live captions"
+# Small print in the top bar, so the audience knows what to expect. "" hides it.
+note = "机器翻译，仅供参考 · Machine translation, may contain errors"
+# Line order on screen. Each caption shows both languages.
+order = ["zh", "en"]
+# Number of captions kept on screen.
+lines = 3
+
+[server]
+# 0.0.0.0 lets phones on the same Wi-Fi open the captions page.
+# Use 127.0.0.1 to keep it on this computer only.
+host = "0.0.0.0"
+port = 8765
+
+[log]
+# Every finished caption is saved here (text and JSON lines), one file per run.
+folder = "transcripts"

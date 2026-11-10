@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SZOSS Captions Control</title>
+<style>
+  :root {
+    --bg: #0D1422; --panel: #16203A; --line: #24365E; --ink: #F4F6FB; --soft: #AFC0E4; --muted: #6F7FA3;
+    --pink: #D02A78; --die: #5F7DB8; --ok: #3DDC97; --warn: #F5B841; --bad: #FF5D5D;
+    --font: "Inter", "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--font); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 18px 16px 40px; }
+  h1 { font-size: 20px; margin: 0 0 16px; display: flex; align-items: center; gap: 10px; }
+  h1 .tag { background: var(--pink); color: #fff; font-size: 14px; font-weight: 800; letter-spacing: .06em; padding: 3px 9px; border-radius: 7px; }
+  h1 .spacer { flex: 1; }
+  h1 a { color: var(--soft); font-size: 14px; font-weight: 500; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .card h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row + .row { margin-top: 10px; }
+  .k { color: var(--muted); }
+  .meter { position: relative; height: 18px; flex: 1; min-width: 160px; border-radius: 9px; overflow: hidden;
+    background: linear-gradient(90deg, #22314f 0 50%, #2b3f2f 50% 83%, #4a2a2a 83%); }
+  .meter i { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, var(--die), var(--ok) 70%, var(--warn) 85%, var(--bad)); transition: width .12s linear; }
+  .meter span { position: absolute; right: 8px; top: 0; font-size: 12px; line-height: 18px; color: var(--ink); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--soft); font-size: 13px; }
+  .pill.on { border-color: var(--ok); color: var(--ok); }
+  .pill.bad { border-color: var(--bad); color: var(--bad); }
+  .pill.warn { border-color: var(--warn); color: var(--warn); }
+  button {
+    font: inherit; font-weight: 600; color: var(--ink); background: #1E2C4C; border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; cursor: pointer;
+  }
+  button:hover { border-color: var(--die); }
+  button.sel { background: var(--pink); border-color: var(--pink); color: #fff; }
+  button.big { flex: 1; min-width: 0; padding: 14px 10px; font-size: 16px; }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  button.small { padding: 4px 10px; font-size: 13px; font-weight: 500; }
+  input[type=text] { flex: 1; min-width: 160px; font: inherit; color: var(--ink); background: #0F1830; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { border-top: 1px solid var(--line); padding: 8px 6px; vertical-align: top; }
+  td.t { color: var(--muted); white-space: nowrap; font-size: 13px; }
+  td.l { font-weight: 700; color: var(--soft); font-size: 13px; }
+  td .tgt { color: var(--soft); margin-top: 2px; }
+  td .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .partial { color: var(--soft); font-style: italic; min-height: 1.4em; }
+  .links a { color: var(--soft); word-break: break-all; }
+  .links img { width: 140px; background: #fff; border-radius: 8px; display: block; margin-top: 8px; }
+  .err { color: var(--bad); font-size: 13px; }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .92em; color: var(--soft); background: #0F1830; padding: 0 4px; border-radius: 4px; }
+  select { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: #0F1830; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
+  .warnbox { display: none; margin-top: 10px; background: #3a2f12; border: 1px solid var(--warn); color: #FBE3A6; border-radius: 10px; padding: 8px 12px; font-size: 13px; line-height: 1.45; }
+  #denied { display: none; background: #3a1f2a; border: 1px solid var(--bad); padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="tag">SZOSS</span> Captions control <span class="spacer"></span> <a href="/" target="_blank" id="displayLink">Open caption screen ↗</a></h1>
+  <div id="denied">This page can only change settings from the captions computer, or with the <b>?key=</b> link printed in its terminal.</div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Microphone</h2>
+      <div class="row"><div class="meter"><i id="lvl"></i><span id="lvlText">-- dB</span></div><span class="pill" id="speaking">silent</span></div>
+      <div class="row" id="micRow"><select id="mic" aria-label="Microphone"><option>Loading inputs…</option></select><button class="small" id="micRefresh" title="Look for newly plugged-in devices">↻</button></div>
+      <div class="row k" id="source">–</div>
+      <div class="warnbox" id="nosignal"><b>No sound from this input.</b> Pick another input above. On Windows also check Settings → Privacy &amp; security → Microphone → “Let desktop apps access your microphone”.</div>
+      <p class="k" style="font-size:13px;margin:10px 0 0">Speech should peak in the green zone (about -20 to -6 dB). Raise <code>gain</code> in config.toml if it stays left. The input you pick is remembered.</p>
+    </div>
+
+    <div class="card">
+      <h2>Who is speaking?</h2>
+      <div class="modes">
+        <button class="big" data-mode="auto">Auto<br><small>自动</small></button>
+        <button class="big" data-mode="en">English<br><small>→ 中文</small></button>
+        <button class="big" data-mode="zh">中文<br><small>→ English</small></button>
+      </div>
+      <p class="k" style="margin:10px 0 0">Lock the language for each talk; use Auto for Q&amp;A.<br>Last heard: <b id="lastLang" style="color:var(--ink)">–</b></p>
+    </div>
+
+    <div class="card">
+      <h2>Screen</h2>
+      <div class="row">
+        <button class="big" id="pause">Pause</button>
+        <button class="big" id="clear">Clear screen</button>
+      </div>
+      <div class="row">
+        <input type="text" id="msg" placeholder="Banner, e.g. 休息 Break · back at 16:30">
+        <button id="msgShow">Show</button><button id="msgHide">Hide</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:14px">
+    <div class="card">
+      <h2>Live</h2>
+      <div class="partial" id="partial"></div>
+      <table id="list"></table>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:14px">
+    <div class="card">
+      <h2>Engines</h2>
+      <div class="row"><span class="k">Speech</span> <span id="asr">–</span></div>
+      <div class="row"><span class="k">Last caption</span> <span id="asrTime">–</span></div>
+      <div class="row"><span class="k">Translation</span></div>
+      <div id="mt"></div>
+      <div class="row"><span class="k">Queue</span> <span id="queue">–</span> <span class="k">Viewers</span> <span id="viewers">–</span></div>
+    </div>
+    <div class="card links">
+      <h2>Links</h2>
+      <div id="links">–</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const key = params.get("key") || "";
+  const $ = (id) => document.getElementById(id);
+  const S = { captions: new Map(), settings: {}, partial: null };
+  if (key) $("displayLink").href = "/?key=" + encodeURIComponent(key);
+
+  async function post(path, body) {
+    const r = await fetch(path + (key ? "?key=" + encodeURIComponent(key) : ""), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+    }).catch(() => null);
+    if (r && r.status === 403) $("denied").style.display = "block";
+    return r && r.ok;
+  }
+
+  document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => post("/api/mode", { mode: b.dataset.mode })));
+  $("pause").onclick = () => post("/api/pause", { paused: !S.settings.paused });
+  $("clear").onclick = () => post("/api/clear");
+  $("msgShow").onclick = () => post("/api/message", { text: $("msg").value });
+  $("msgHide").onclick = () => post("/api/message", { text: "" });
+  $("msg").onkeydown = (e) => { if (e.key === "Enter") $("msgShow").click(); };
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function renderSettings() {
+    const s = S.settings;
+    document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("sel", b.dataset.mode === (s.mode || "auto")));
+    $("pause").textContent = s.paused ? "Resume" : "Pause";
+    $("pause").classList.toggle("sel", !!s.paused);
+    if (document.activeElement !== $("msg") && s.message) $("msg").value = s.message;
+  }
+
+  function renderList() {
+    const rows = [...S.captions.values()].sort((a, b) => b.id - a.id).slice(0, 20);
+    $("list").innerHTML = rows.map((c) => {
+      const t = new Date(c.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const tgt = c.tgt ? esc(c.tgt) : c.status === "failed" ? '<span class="err">translation failed: ' + esc(c.error || "") + "</span>" : c.status === "untranslated" ? "" : "…";
+      const meta = [c.audio_s && c.audio_s + " s audio", c.asr_ms != null && "speech " + c.asr_ms + " ms", c.mt_ms != null && "translation " + c.mt_ms + " ms", c.backend].filter(Boolean).join(" · ");
+      return `<tr><td class="t">${t}</td><td class="l">${c.lang.toUpperCase()}</td><td>${esc(c.src)}<div class="tgt">${tgt}</div><div class="meta">${esc(meta)}</div></td><td><button class="small" data-hide="${c.id}">Hide</button></td></tr>`;
+    }).join("");
+    $("list").querySelectorAll("[data-hide]").forEach((b) => (b.onclick = () => post("/api/remove", { id: +b.dataset.hide })));
+    $("partial").textContent = S.partial ? "🎤 " + S.partial.src : "";
+  }
+
+  function renderStatus(st) {
+    const db = st.level_db ?? -90;
+    const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+    $("lvl").style.width = pct + "%";
+    $("lvlText").textContent = db.toFixed(0) + " dB";
+    const sp = $("speaking");
+    sp.textContent = st.speaking ? "speech" : "silent";
+    sp.className = "pill" + (st.speaking ? " on" : "");
+    $("source").textContent = (st.is_mic === false ? (st.source || "–") : "") + (st.audio_errors ? `${st.audio_errors} audio glitches` : "");
+    $("nosignal").style.display = st.no_signal ? "block" : "none";
+    if (st.is_mic === false) $("micRow").style.display = "none";
+    $("lastLang").textContent = st.current_lang ? st.current_lang.toUpperCase() : "–";
+    const a = st.asr || {};
+    $("asr").textContent = a.engine ? `${a.engine} · ${a.model} · ${a.device}` + (st.partials_disabled ? " · live preview off (slow)" : "") : "loading…";
+    $("asrTime").textContent = st.captions ? `speech ${st.asr_ms} ms (${st.asr_rtf}× real time) · translation ${st.mt_ms} ms` : "–";
+    $("mt").innerHTML = (st.translators || []).map((t) =>
+      `<div class="row"><span class="pill ${t.skipping ? "bad" : t.ok ? "on" : "warn"}">${t.skipping ? "down" : t.ok ? "ok" : "error"}</span> ${esc(t.name)} ${t.error ? '<span class="err">' + esc(t.error) + "</span>" : ""}</div>`
+    ).join("") || '<div class="row k">off (transcription only)</div>';
+    $("queue").textContent = `speech ${st.queue?.asr ?? 0} · translation ${st.queue?.translate ?? 0}` + (st.mt_failed ? ` · ${st.mt_failed} failed` : "");
+    $("viewers").textContent = st.viewers ?? "–";
+  }
+
+  async function loadLinks() {
+    const r = await fetch("/api/info" + (key ? "?key=" + encodeURIComponent(key) : "")).then((r) => r.json()).catch(() => null);
+    if (!r) return;
+    const u = r.urls;
+    let html = `<div class="row"><span class="k">This computer</span> <a href="${u.display}" target="_blank">${u.display}</a></div>`;
+    if (u.lan) {
+      html += `<div class="row"><span class="k">Phones on the same Wi-Fi</span> <a href="${u.lan}" target="_blank">${u.lan}</a></div>`;
+      html += `<div class="row"><span class="k">Control from another device</span> <a href="${u.lan_control}" target="_blank">${u.lan_control}</a></div>`;
+      html += `<img src="/qr.svg" alt="" onerror="this.remove()">`;
+    }
+    html += `<p class="k" style="font-size:13px;margin:10px 0 0">Display options: <code>?layout=strip</code> one caption, for the bottom of a screen · <code>?bg=transparent</code> OBS overlay · <code>?order=en,zh</code> English on top</p>`;
+    $("links").innerHTML = html;
+  }
+  loadLinks();
+
+  async function loadDevices(data) {
+    const r = data || (await fetch("/api/devices" + (key ? "?key=" + encodeURIComponent(key) : "")).then((r) => r.json()).catch(() => null));
+    const sel = $("mic");
+    if (!r || r.error) { sel.innerHTML = `<option>${esc(r?.error || "can't list inputs")}</option>`; return; }
+    if (!r.is_mic) { $("micRow").style.display = "none"; return; }
+    let found = false;
+    sel.innerHTML = r.devices.map((d) => {
+      const on = r.current == null ? d.default : d.index === r.current;
+      found = found || on;
+      return `<option value="${d.index}"${on ? " selected" : ""}>${esc(d.name)}${d.default ? " (default)" : ""} · ${esc(d.hostapi.replace("Windows ", ""))}</option>`;
+    }).join("");
+    if (!found && r.current_name) sel.insertAdjacentHTML("afterbegin", `<option selected disabled>${esc(r.current_name)}</option>`);
+  }
+  $("mic").onchange = async () => {
+    const sel = $("mic");
+    sel.disabled = true;
+    const r = await fetch("/api/device" + (key ? "?key=" + encodeURIComponent(key) : ""), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ index: +sel.value }),
+    }).then((r) => r.json()).catch(() => ({ error: "not connected" }));
+    sel.disabled = false;
+    if (r.error) { alertBox(r.error); loadDevices(); } else loadDevices(r);
+  };
+  $("micRefresh").onclick = () => loadDevices();
+  const noSignalHTML = $("nosignal").innerHTML;
+  function alertBox(msg) { const b = $("nosignal"); b.textContent = msg; b.style.display = "block"; setTimeout(() => { b.innerHTML = noSignalHTML; b.style.display = "none"; }, 6000); }
+  loadDevices();
+
+  const es = new EventSource("/events?status=1" + (key ? "&key=" + encodeURIComponent(key) : ""));
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.type === "snapshot") { S.captions = new Map(ev.captions.map((c) => [c.id, c])); S.partial = ev.partial; S.settings = ev.settings; renderSettings(); renderList(); }
+    else if (ev.type === "caption") { S.captions.set(ev.caption.id, ev.caption); if (S.partial && S.partial.id === ev.caption.id) S.partial = null; renderList(); }
+    else if (ev.type === "partial") { S.partial = ev.partial; renderList(); }
+    else if (ev.type === "remove") { S.captions.delete(ev.id); renderList(); }
+    else if (ev.type === "clear") { S.captions.clear(); S.partial = null; renderList(); }
+    else if (ev.type === "settings") { S.settings = ev.settings; renderSettings(); }
+    else if (ev.type === "status") renderStatus(ev.status);
+  };
+})();
+</script>
+</body>
+</html>

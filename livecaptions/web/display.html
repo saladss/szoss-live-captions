@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SZOSS Live Captions</title>
+<style>
+  :root {
+    --bg: #111A2B;
+    --panel: #18233A;
+    --ink: #F4F6FB;
+    --ink-soft: #AFC0E4;
+    --muted: #6F7FA3;
+    --pink: #D02A78;
+    --die: #5F7DB8;
+    --band: #2A4478;
+    --ok: #3DDC97;
+    --warn: #F5B841;
+    --bad: #FF5D5D;
+    --scale: 1;
+    --fs: calc(clamp(20px, 3.6vw, 76px) * var(--scale));
+    --font-zh: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif;
+    --font-en: "Inter", "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-en);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.transparent { background: transparent; }
+
+  /* ---- top bar ---- */
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: max(14px, env(safe-area-inset-top)) 28px 10px;
+    font-size: clamp(13px, 1.25vw, 22px);
+    color: var(--ink-soft);
+    flex: none;
+  }
+  header .tag {
+    background: var(--pink); color: #fff; font-weight: 800; letter-spacing: .06em;
+    padding: .18em .6em; border-radius: .45em;
+  }
+  header .title { font-weight: 600; }
+  header .note { color: var(--muted); font-size: .85em; }
+  header .spacer { flex: 1; }
+  .badge {
+    border: 1.5px solid var(--band); border-radius: 999px; padding: .2em .8em;
+    color: var(--ink); font-weight: 600; white-space: nowrap;
+  }
+  .badge.paused { border-color: var(--warn); color: var(--warn); }
+  .dot { width: .7em; height: .7em; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.live { background: var(--ok); box-shadow: 0 0 .6em var(--ok); }
+  .dot.down { background: var(--bad); }
+  body.noheader header { display: none; }
+
+  /* ---- message banner ---- */
+  #message {
+    align-self: center; margin-top: 2vh; max-width: 86vw;
+    background: var(--pink); color: #fff; border-radius: 1em;
+    padding: .5em 1.2em; font-size: calc(var(--fs) * .8); font-weight: 700; text-align: center;
+    font-family: var(--font-zh);
+  }
+  #message:empty { display: none; }
+
+  /* ---- captions ---- */
+  main {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    overflow: hidden;
+    padding: 0 5vw max(4vh, env(safe-area-inset-bottom));
+    gap: calc(var(--fs) * .55);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%);
+            mask-image: linear-gradient(to bottom, transparent 0, #000 12%);
+  }
+  .cap { flex: none; transition: opacity .5s ease; animation: rise .35s ease-out; }
+  .cap.old1 { opacity: .55; }
+  .cap.old2 { opacity: .32; }
+  .cap.old3 { opacity: .18; }
+  @keyframes rise { from { opacity: 0; transform: translateY(.4em); } }
+  .line { line-height: 1.32; overflow-wrap: anywhere; }
+  .line + .line { margin-top: .18em; }
+  .line[data-lang="zh"] { font-family: var(--font-zh); }
+  .line.tgt { font-size: var(--fs); font-weight: 650; color: var(--ink); }
+  .line.src { font-size: calc(var(--fs) * .74); font-weight: 500; color: var(--ink-soft); }
+  .line.src::before {
+    content: ""; display: inline-block; width: .5em; height: .5em; border-radius: 50%;
+    background: var(--pink); margin-right: .45em; vertical-align: .12em;
+  }
+  .cap.partial .line.src { font-style: italic; opacity: .8; }
+  .cap.partial .line.src::after {
+    content: ""; display: inline-block; width: .08em; height: 1em; margin-left: .1em;
+    background: var(--ink-soft); vertical-align: -.12em; animation: blink 1s steps(2) infinite;
+  }
+  .wait { color: var(--muted); font-size: .55em; letter-spacing: .3em; animation: pulse 1.4s ease-in-out infinite; }
+  .failed { color: var(--muted); font-size: .6em; font-weight: 500; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  /* strip layout: one caption, compact, for the bottom of a screen or an OBS overlay */
+  body.strip header { display: none; }
+  body.strip main { padding: 1.5vh 3vw; -webkit-mask-image: none; mask-image: none; }
+  body.strip.transparent .cap {
+    background: rgba(17, 26, 43, .82); border-radius: .4em; padding: .35em .7em;
+  }
+
+  /* ---- idle hint ---- */
+  #idle {
+    position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+    color: var(--muted); font-size: calc(var(--fs) * .55); text-align: center; font-family: var(--font-zh);
+  }
+  #idle[hidden] { display: none; }
+  #idle b { color: var(--ink-soft); font-weight: 600; }
+
+  /* ---- QR & help overlays ---- */
+  .overlay {
+    position: fixed; z-index: 5; background: var(--panel); border: 1px solid var(--band);
+    border-radius: 18px; padding: 18px 20px; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  #qr { right: 3vw; top: 9vh; width: min(300px, 40vw); text-align: center; font-family: var(--font-zh); }
+  #qr img { width: 100%; background: #fff; border-radius: 10px; display: block; }
+  #qr p { margin: 10px 0 0; color: var(--ink-soft); font-size: 15px; line-height: 1.4; }
+  #help { left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 17px; line-height: 1.9; min-width: 340px; }
+  #help h3 { margin: 0 0 6px; font-size: 18px; color: var(--ink); }
+  #help kbd {
+    display: inline-block; min-width: 1.7em; text-align: center; padding: 0 .35em; margin-right: .6em;
+    border: 1px solid var(--band); border-bottom-width: 3px; border-radius: 6px; color: var(--ink); font-family: inherit;
+  }
+  #help div { color: var(--ink-soft); }
+  .overlay[hidden] { display: none; }
+  #toast {
+    position: fixed; left: 50%; bottom: 3vh; transform: translateX(-50%); z-index: 6;
+    background: var(--panel); border: 1px solid var(--band); color: var(--ink); border-radius: 999px;
+    padding: 8px 18px; font-size: 16px; opacity: 0; transition: opacity .3s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+
+  @media (max-width: 640px) {
+    header { padding: 10px 14px 6px; gap: 8px; }
+    header .title, header .note { display: none; }
+    main { padding: 0 16px 16px; }
+    :root { --fs: calc(clamp(19px, 5.4vw, 30px) * var(--scale)); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="tag">SZOSS</span>
+  <span class="title" id="title">实时字幕 · Live captions</span>
+  <span class="note" id="note"></span>
+  <span class="spacer"></span>
+  <span class="badge" id="mode">AUTO</span>
+  <span class="dot" id="conn" title="connection"></span>
+</header>
+<div id="message"></div>
+<main id="caps"></main>
+<div id="idle"><div><b>正在聆听…</b><br>Listening for speech</div></div>
+
+<div class="overlay" id="qr" hidden>
+  <img alt="QR code" id="qrimg">
+  <p>扫码在手机上看字幕<br>Captions on your phone</p>
+</div>
+<div class="overlay" id="help" hidden>
+  <h3>Keyboard · 快捷键</h3>
+  <div><kbd>A</kbd>Auto-detect language</div>
+  <div><kbd>E</kbd>English speaker → 中文</div>
+  <div><kbd>C</kbd>中文发言 → English</div>
+  <div><kbd>Space</kbd>Pause / resume</div>
+  <div><kbd>X</kbd>Clear the screen</div>
+  <div><kbd>+</kbd><kbd>−</kbd>Text size</div>
+  <div><kbd>F</kbd>Full screen &nbsp; <kbd>H</kbd>Top bar</div>
+  <div><kbd>Q</kbd>QR code for phones</div>
+</div>
+<div id="toast"></div>
+
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const key = params.get("key") || "";
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("szoss." + k); return v === null ? d : v; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("szoss." + k, v); } catch {} },
+  };
+
+  const state = { captions: new Map(), partial: null, settings: {}, connected: false };
+  let order = (params.get("order") || "").split(",").filter((x) => x === "en" || x === "zh");
+  let maxLines = parseInt(params.get("lines") || "0", 10) || 0;
+  const strip = params.get("layout") === "strip";
+  if (strip) document.body.classList.add("strip");
+  if (params.get("bg") === "transparent") document.body.classList.add("transparent");
+  if (params.get("header") === "0" || store.get("noheader", "0") === "1") document.body.classList.add("noheader");
+  let scale = parseFloat(params.get("scale") || store.get("scale", "1")) || 1;
+  const applyScale = () => document.documentElement.style.setProperty("--scale", scale);
+  applyScale();
+
+  // ---------------------------------------------------------------- rendering
+  const els = new Map(); // id -> element
+
+  function lineHTML(lang, text, cls) {
+    const d = document.createElement("div");
+    d.className = "line " + cls;
+    d.dataset.lang = lang;
+    d.textContent = text;
+    return d;
+  }
+
+  function buildCap(c, isPartial) {
+    const wrap = document.createElement("div");
+    wrap.className = "cap" + (isPartial ? " partial" : "");
+    const src = c.lang, tgt = src === "en" ? "zh" : "en";
+    for (const lang of order) {
+      if (lang === src) {
+        wrap.appendChild(lineHTML(lang, c.src, c.status === "untranslated" ? "tgt" : "src"));
+      } else if (!isPartial && c.status !== "untranslated") {
+        const l = lineHTML(lang, "", "tgt");
+        if (c.tgt) l.textContent = c.tgt;
+        else if (c.status === "failed") l.innerHTML = '<span class="failed">（翻译暂不可用 · translation unavailable）</span>';
+        else l.innerHTML = '<span class="wait">···</span>';
+        wrap.appendChild(l);
+      }
+    }
+    wrap.dataset.sig = JSON.stringify([c.src, c.tgt, c.status, c.lang, isPartial, order]);
+    return wrap;
+  }
+
+  function render() {
+    const main = $("caps");
+    const lines = strip ? 1 : (maxLines || state.settings.lines || 3);
+    const finals = [...state.captions.values()].sort((a, b) => a.id - b.id).slice(-lines);
+    const shown = finals.map((c, i) => ({ c, partial: false, age: finals.length - 1 - i }));
+    // the live (still being spoken) line sits under the finished captions; the strip layout skips it
+    if (!strip && state.partial && !state.captions.has(state.partial.id)) shown.push({ c: state.partial, partial: true, age: -1 });
+    const keep = new Set();
+    shown.forEach(({ c, partial, age }) => {
+      const id = (partial ? "p" : "c") + c.id;
+      keep.add(id);
+      const sig = JSON.stringify([c.src, c.tgt, c.status, c.lang, partial, order]);
+      let el = els.get(id);
+      if (!el || el.dataset.sig !== sig) {
+        const fresh = buildCap(c, partial);
+        // a live line turning into its finished caption shouldn't re-animate
+        const prior = el || els.get((partial ? "c" : "p") + c.id);
+        if (prior) fresh.style.animation = "none";
+        if (el) el.replaceWith(fresh); else main.appendChild(fresh);
+        el = fresh;
+        els.set(id, el);
+      }
+      el.classList.toggle("old1", age === 1);
+      el.classList.toggle("old2", age === 2);
+      el.classList.toggle("old3", age >= 3);
+    });
+    for (const [id, el] of els) {
+      if (!keep.has(id)) { el.remove(); els.delete(id); }
+    }
+    // keep DOM order by id
+    shown.forEach(({ c, partial }) => main.appendChild(els.get((partial ? "p" : "c") + c.id)));
+    $("idle").hidden = shown.length > 0 || strip;
+  }
+
+  function renderSettings() {
+    const s = state.settings;
+    if (s.title) $("title").textContent = s.title;
+    $("note").textContent = s.note || "";
+    if (!params.get("order") && Array.isArray(s.order) && s.order.length) order = s.order.filter((x) => x === "en" || x === "zh");
+    if (!order.length) order = ["zh", "en"];
+    const mode = $("mode");
+    const label = { auto: "AUTO 自动", en: "EN → 中文", zh: "中文 → EN" }[s.mode] || "AUTO";
+    mode.textContent = s.paused ? "PAUSED 已暂停" : label;
+    mode.classList.toggle("paused", !!s.paused);
+    $("message").textContent = s.message || "";
+    els.forEach((el) => el.remove()); els.clear();
+    render();
+  }
+
+  function setConn(ok) {
+    state.connected = ok;
+    $("conn").className = "dot " + (ok ? "live" : "down");
+  }
+
+  // ---------------------------------------------------------------- events
+  function connect() {
+    const es = new EventSource("/events");
+    es.onopen = () => setConn(true);
+    es.onerror = () => setConn(false);
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      switch (ev.type) {
+        case "snapshot":
+          state.captions = new Map(ev.captions.map((c) => [c.id, c]));
+          state.partial = ev.partial;
+          state.settings = ev.settings || {};
+          setConn(true);
+          renderSettings();
+          break;
+        case "caption":
+          state.captions.set(ev.caption.id, ev.caption);
+          if (state.partial && state.partial.id === ev.caption.id) state.partial = null;
+          if (state.captions.size > 80) state.captions.delete(Math.min(...state.captions.keys()));
+          render();
+          break;
+        case "partial":
+          state.partial = ev.partial;
+          render();
+          break;
+        case "remove":
+          state.captions.delete(ev.id);
+          render();
+          break;
+        case "clear":
+          state.captions.clear();
+          state.partial = null;
+          render();
+          break;
+        case "settings":
+          state.settings = ev.settings;
+          renderSettings();
+          break;
+      }
+    };
+  }
+  connect();
+
+  // ---------------------------------------------------------------- keyboard
+  let toastTimer;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+
+  async function post(path, body) {
+    try {
+      const r = await fetch(path + (key ? "?key=" + encodeURIComponent(key) : ""), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      if (r.status === 403) toast("Controls work only on the captions computer");
+      return r.ok;
+    } catch { toast("Not connected"); return false; }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "a") { post("/api/mode", { mode: "auto" }); toast("Auto-detect · 自动识别"); }
+    else if (k === "e") { post("/api/mode", { mode: "en" }); toast("English speaker → 中文"); }
+    else if (k === "c") { post("/api/mode", { mode: "zh" }); toast("中文发言 → English"); }
+    else if (k === " ") { e.preventDefault(); post("/api/pause", { paused: !state.settings.paused }); }
+    else if (k === "x") { post("/api/clear"); }
+    else if (k === "+" || k === "=") { scale = Math.min(2.5, +(scale + 0.1).toFixed(2)); store.set("scale", scale); applyScale(); toast("Text " + Math.round(scale * 100) + "%"); }
+    else if (k === "-" || k === "_") { scale = Math.max(0.5, +(scale - 0.1).toFixed(2)); store.set("scale", scale); applyScale(); toast("Text " + Math.round(scale * 100) + "%"); }
+    else if (k === "f") { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); }
+    else if (k === "h") { const on = document.body.classList.toggle("noheader"); store.set("noheader", on ? "1" : "0"); }
+    else if (k === "q") {
+      const q = $("qr");
+      if (q.hidden) $("qrimg").src = "/qr.svg?t=" + Date.now();
+      q.hidden = !q.hidden;
+    }
+    else if (k === "?" || k === "/") { $("help").hidden = !$("help").hidden; }
+    else if (k === "escape") { $("help").hidden = true; $("qr").hidden = true; }
+  });
+  $("qrimg").onerror = () => { $("qr").hidden = true; toast("QR needs: pip install qrcode"); };
+})();
+</script>
+</body>
+</html>

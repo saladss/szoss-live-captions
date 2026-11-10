@@ -1,0 +1,7 @@
+numpy
+sounddevice          # microphone input (needs PortAudio; bundled in the macOS/Windows wheels)
+faster-whisper>=1.1  # speech recognition on any OS; also provides the Silero voice detector
+soxr                 # good-quality resampling from the mic's sample rate to 16 kHz
+zhconv               # keeps Chinese output in Simplified characters
+qrcode               # QR code for phones (optional)
+mlx-whisper; sys_platform == "darwin" and platform_machine == "arm64"   # fast on Apple Silicon
