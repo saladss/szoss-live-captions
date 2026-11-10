@@ -403,7 +403,9 @@ def write_wav(path: Path, audio):
 
 def prepare_audio(folder: Path) -> dict:
     import numpy as np
-    from faster_whisper import decode_audio
+
+    sys.path.insert(0, str(ROOT))
+    from livecaptions.audio import decode_file  # faster_whisper.decode_audio breaks on newer PyAV
 
     folder.mkdir(parents=True, exist_ok=True)
     files = {}
@@ -416,7 +418,7 @@ def prepare_audio(folder: Path) -> dict:
     elif download("https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_zh.wav", folder / "zh.wav"):
         files["zh"] = folder / "zh.wav"
     gap = np.zeros(int(16000 * 1.5), np.float32)
-    parts = [decode_audio(str(files[k]), sampling_rate=16000) for k in ("en", "zh", "jfk") if k in files]
+    parts = [decode_file(str(files[k])) for k in ("en", "zh", "jfk") if k in files]
     talk = np.concatenate([x for p in parts for x in (gap, p)] + [gap])
     write_wav(folder / "talk.wav", talk)
     files["talk"] = folder / "talk.wav"
