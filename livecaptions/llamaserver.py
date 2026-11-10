@@ -124,7 +124,9 @@ class LlamaServer:
         self.load_timeout = float(cfg.get("load_timeout_s", 180))
         self.proc: subprocess.Popen | None = None
         self.mode = ""
+        self.gpu_name = ""
         self.url = ""
+        self._log_path: Path | None = None
         self.error = ""
         self._job = None
         self._log = None
@@ -176,14 +178,39 @@ class LlamaServer:
 
     # -- internals ------------------------------------------------------------
 
+    def where(self) -> str:
+        if self.mode == "gpu":
+            return f"graphics card ({self.gpu_name})" if self.gpu_name else "graphics card"
+        return {"cpu": "CPU"}.get(self.mode, self.mode)
+
     def _log_file(self):
         for folder in (resolve_path("logs"), Path(tempfile.gettempdir())):
             try:
                 folder.mkdir(parents=True, exist_ok=True)
-                return open(folder / "llama-server.log", "w", encoding="utf-8", errors="replace")
+                self._log_path = folder / "llama-server.log"
+                return open(self._log_path, "w", encoding="utf-8", errors="replace")
             except OSError:
                 continue
+        self._log_path = None
         return subprocess.DEVNULL
+
+    def _actual_mode(self, mode: str) -> str:
+        """The Vulkan build quietly runs on the CPU when there is no usable graphics card."""
+        if mode == "cpu" or not self._log_path:
+            return mode
+        try:
+            text = self._log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return mode
+        import re
+
+        gpu = re.search(r"ggml_vulkan: \d+ = ([^|\r\n(]+)", text)
+        off = re.findall(r"offloaded (\d+)/(\d+) layers to GPU", text)
+        if gpu:
+            self.gpu_name = gpu.group(1).strip()
+        if off and int(off[-1][0]) > 0:
+            return "gpu"
+        return "cpu" if off or not gpu else mode
 
     def _start_any(self):
         if self.model is None:
@@ -197,11 +224,10 @@ class LlamaServer:
         for mode, exe in self.candidates:
             t0 = time.monotonic()
             if self._launch(mode, exe) and self._probe():
-                self.mode = mode
+                self.mode = self._actual_mode(mode)
                 self.error = ""
                 self._ready.set()
-                where = {"gpu": "graphics card", "cpu": "CPU"}.get(mode, mode)
-                print(f"[translate] built-in translator ready on the {where} in {time.monotonic() - t0:.1f} s ({self.model.name})")
+                print(f"[translate] built-in translator ready on the {self.where()} in {time.monotonic() - t0:.1f} s ({self.model.name})")
                 return
             self.stop()
             print(f"[translate] llama-server ({mode}) didn't work: {self.error}; trying the next option")

@@ -29,6 +29,7 @@ OUT = ROOT / "build-out"
 APP_NAME = "SZOSS Captions"
 APP = OUT / APP_NAME
 ZIP = OUT / "SZOSS-Captions-win64.zip"
+UPDATE_ZIP = OUT / "SZOSS-Captions-update.zip"  # program files only, to unzip over an existing folder
 LOGS = OUT / "test-logs"
 WHISPER_REPO = os.environ.get("WHISPER_REPO", "Systran/faster-whisper-small")
 GGUF_CHOICES = os.environ.get(
@@ -228,7 +229,8 @@ def windows_config(gguf_name: str) -> str:
         'server = "llama"\n'
         'gpu = "auto"\n'
         "threads = 0                # 0 = half the CPU threads\n"
-        "context = 4096\n\n"
+        "context = 4096\n"
+        "context_lines = 0          # earlier sentences sent along; small models do better without\n\n"
         "# Ollama, if installed separately (not needed for this app).",
     )
     return s
@@ -353,6 +355,14 @@ def cmd_build():
         run([seven, "a", "-tzip", "-mx=5", "-mmt=on", ZIP, APP_NAME], cwd=OUT)
     else:
         shutil.make_archive(str(ZIP.with_suffix("")), "zip", OUT, APP_NAME)
+    # small update package: the program without models, llama.cpp or settings
+    UPDATE_ZIP.unlink(missing_ok=True)
+    with zipfile.ZipFile(UPDATE_ZIP, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+        for f in sorted(APP.rglob("*")):
+            rel = f.relative_to(APP)
+            if f.is_file() and rel.parts[0] not in ("models", "llama", "config.toml", "transcripts", "logs"):
+                z.write(f, Path(APP_NAME) / rel)
+    print(f"update zip: {size_mb(UPDATE_ZIP):.0f} MB")
     sizes = {p.name: round(size_mb(p)) for p in APP.iterdir()}
     print(json.dumps(sizes, indent=1))
     print(f"zip: {size_mb(ZIP):.0f} MB")
@@ -519,11 +529,13 @@ def cmd_release():
     notes = (
         "Windows build of SZOSS live captions. Download **SZOSS-Captions-win64.zip**, unzip it, "
         "and double-click **SZOSS Captions.exe**. No Python, installs or internet needed.\n\n"
+        "Already have an earlier build? **SZOSS-Captions-update.zip** holds just the program: close the app, "
+        "unzip it over your existing folder (replace files) and start it again. Models and your config.toml stay as they are.\n\n"
         f"Includes Whisper small, {info['gguf']} and {info['llama']}.\n{timing}\n"
         f"Test transcript from the automatic check:\n```\n{transcript.strip()}\n```\n"
     )
     (OUT / "notes.md").write_text(notes, encoding="utf-8")
-    run(["gh", "release", "create", tag, ZIP, "--title", f"SZOSS Captions for Windows (build {run_no})",
+    run(["gh", "release", "create", tag, ZIP, UPDATE_ZIP, "--title", f"SZOSS Captions for Windows (build {run_no})",
          "--notes-file", OUT / "notes.md", "--latest"], cwd=ROOT)
 
 

@@ -67,7 +67,17 @@ def matching_terms(text: str, src: str, glossary: dict) -> list[tuple[str, str]]
     return found
 
 
-def build_messages(text: str, src: str, tgt: str, context: list[tuple[str, str]], glossary: dict, topic: str):
+def latin_words(text: str, glossary: dict) -> int:
+    """English words in the text, not counting names the glossary keeps as they are."""
+    rest = text
+    for en, zh in glossary.items():
+        if en == zh and not has_cjk(en):
+            rest = re.sub(re.escape(en), " ", rest, flags=re.I)
+    return len(re.findall(r"[A-Za-z]{2,}", rest))
+
+
+def build_messages(text: str, src: str, tgt: str, context: list[tuple[str, str]], glossary: dict, topic: str,
+                   strict: bool = False):
     terms = [f"{a} = {b}" if a != b else f"{a} (keep as is)" for a, b in matching_terms(text, src, glossary)]
     system = (
         f"You translate live captions at {topic}. "
@@ -79,6 +89,9 @@ def build_messages(text: str, src: str, tgt: str, context: list[tuple[str, str]]
     )
     if terms:
         system += " Use these term translations: " + "; ".join(terms) + "."
+    if strict:  # retry after a reply in the wrong language: plainest possible request
+        user = f"Translate into {LANG_NAME[tgt]}. Reply with the {LANG_NAME[tgt]} translation only.\n\n{text}"
+        return [{"role": "system", "content": system}, {"role": "user", "content": user}]
     user = ""
     if context:
         lines = "\n".join(f"- {s}" for s, _ in context)
@@ -184,11 +197,12 @@ class LlamaCppBackend:
         # Qwen3 hybrid models think before answering unless told not to
         self.no_think = "qwen3" in low and "instruct" not in low
         self.first_wait = float(cfg.get("load_timeout_s", 180)) * 2
+        # small local models translate more reliably without earlier sentences mixed in
+        self.max_context = int(cfg.get("context_lines", 0))
         self.server.start()
 
     def describe(self) -> str:
-        where = {"gpu": "graphics card", "cpu": "CPU"}.get(self.server.mode, "loading")
-        return f"{self.name} (built-in {self.model}, {where})"
+        return f"{self.name} (built-in {self.model}, {self.server.where() or 'loading'})"
 
     def translate(self, messages, src, tgt, text, context, glossary, topic, timeout) -> str:
         if not self.server.wait_ready(self.first_wait if not self.server.mode else 1.0):
@@ -276,23 +290,37 @@ class Translator:
             for b in self.backends
         ]
 
+    def _problem(self, out: str, text: str, tgt: str) -> str:
+        if not out:
+            return "empty reply"
+        if tgt == "zh" and not has_cjk(out) and (len(text) > 25 or latin_words(text, self.glossary) >= 2):
+            return f"reply is not Chinese: {out[:60]}"
+        if tgt == "en" and len(re.findall(r"[\u4e00-\u9fff]", out)) > len(out) * 0.5:
+            return f"reply is not English: {out[:60]}"
+        return ""
+
+    def _attempt(self, b, text, src, tgt, context, strict=False) -> tuple[str, str]:
+        limit = getattr(b, "max_context", None)
+        ctx = [] if strict or limit == 0 else (context[-limit:] if limit else context)
+        messages = build_messages(text, src, tgt, ctx, self.glossary, self.topic, strict=strict)
+        raw = b.translate(messages, src, tgt, text, ctx, self.glossary, self.topic, self.timeout)
+        out = clean_output(raw, tgt)
+        return out, self._problem(out, text, tgt)
+
     def translate(self, text: str, src: str, tgt: str, context: list[tuple[str, str]]) -> tuple[str, str, float]:
         """Returns (translation, backend name, seconds). Raises TranslationError."""
-        messages = build_messages(text, src, tgt, context, self.glossary, self.topic)
         errors = []
         now = time.monotonic()
         candidates = [b for b in self.backends if b.skip_until <= now] or self.backends
         for b in candidates:
             t0 = time.monotonic()
             try:
-                raw = b.translate(messages, src, tgt, text, context, self.glossary, self.topic, self.timeout)
-                out = clean_output(raw, tgt)
-                if not out:
-                    raise TranslationError("empty reply")
-                if tgt == "zh" and len(text) > 25 and not has_cjk(out):
-                    raise TranslationError(f"reply is not Chinese: {out[:60]}")
-                if tgt == "en" and len(re.findall(r"[一-鿿]", out)) > len(out) * 0.5:
-                    raise TranslationError(f"reply is not English: {out[:60]}")
+                out, problem = self._attempt(b, text, src, tgt, context)
+                if problem:
+                    print(f"[translate] {problem}; asking again")
+                    out, problem = self._attempt(b, text, src, tgt, context, strict=True)
+                if problem:
+                    raise TranslationError(problem)
                 b.failures, b.last_error = 0, ""
                 return out, b.name, time.monotonic() - t0
             except Exception as e:
